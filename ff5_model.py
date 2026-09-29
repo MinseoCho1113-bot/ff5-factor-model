@@ -7,11 +7,13 @@ import urllib.request
 import pandas as pd
 import yfinance as yf
 import statsmodels.api as sm
+from statsmodels.stats.stattools import durbin_watson
+import matplotlib.pyplot as plt
 
-# ---------------------------------------------
+
 # Step 1: Download the 5-factor data
 #         from Kenneth French's Data Library
-# ---------------------------------------------
+
 URL = (
     "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
     "F-F_Research_Data_5_Factors_2x3_CSV.zip"
@@ -74,9 +76,9 @@ print("\nSPY monthly returns (last 5 months):")
 print(spy_ret.tail())
 print(f"Total: {len(spy_ret)} months")
 
-# ---------------------------------------------
+# 
 # Step 3: Merge the two datasets by month
-# ---------------------------------------------
+
 df = factors.join(spy_ret, how="inner")
 
 # Excess return = SPY return - risk-free rate
@@ -87,13 +89,47 @@ end_month = df.index[-1]
 print(f"\nMerged: {start_month} to {end_month}")
 print(f"Number of months: {len(df)}")
 
-# ---------------------------------------------
+
 # Step 4: Run the 5-factor regression (OLS)
-# ---------------------------------------------
+
 factor_cols = ["Mkt-RF", "SMB", "HML", "RMW", "CMA"]
 X = sm.add_constant(df[factor_cols])   # const = alpha
 y = df["SPY_excess"]
 
 model = sm.OLS(y, X).fit()
 print(model.summary())
+
+
+# Step 5: Check residual autocorrelation
+
+resid = model.resid   # monthly errors (actual - predicted)
+
+# (1) Durbin-Watson: compute it by hand, then compare with statsmodels
+dw_manual = (resid.diff() ** 2).sum() / (resid ** 2).sum()
+dw_lib = durbin_watson(resid)
+print(f"\nDurbin-Watson (manual):      {dw_manual:.3f}")
+print(f"Durbin-Watson (statsmodels): {dw_lib:.3f}")
+
+# (2) Plot the residuals
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+# Left: residuals over time
+dates = resid.index.to_timestamp()
+axes[0].plot(dates, resid.values, linewidth=1)
+axes[0].axhline(0, color="gray", linestyle="--")
+axes[0].set_title("Residuals over time")
+axes[0].set_xlabel("Month")
+axes[0].set_ylabel("Residual (%)")
+
+# Right: this month's residual vs last month's residual
+axes[1].scatter(resid.shift(1), resid, s=12)
+axes[1].axhline(0, color="gray", linestyle="--")
+axes[1].axvline(0, color="gray", linestyle="--")
+axes[1].set_title("This month vs last month")
+axes[1].set_xlabel("Residual last month (%)")
+axes[1].set_ylabel("Residual this month (%)")
+
+plt.tight_layout()
+plt.savefig("residuals.png", dpi=150)
+print("Saved: residuals.png")
 
