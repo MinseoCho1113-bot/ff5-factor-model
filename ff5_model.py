@@ -6,6 +6,7 @@ import urllib.request
 
 import pandas as pd
 import yfinance as yf
+import statsmodels.api as sm
 
 # ---------------------------------------------
 # Step 1: Download the 5-factor data
@@ -72,3 +73,27 @@ spy_ret.name = "SPY"
 print("\nSPY monthly returns (last 5 months):")
 print(spy_ret.tail())
 print(f"Total: {len(spy_ret)} months")
+
+# ---------------------------------------------
+# Step 3: Merge the two datasets by month
+# ---------------------------------------------
+df = factors.join(spy_ret, how="inner")
+
+# Excess return = SPY return - risk-free rate
+df["SPY_excess"] = df["SPY"] - df["RF"]
+
+start_month = df.index[0]
+end_month = df.index[-1]
+print(f"\nMerged: {start_month} to {end_month}")
+print(f"Number of months: {len(df)}")
+
+# ---------------------------------------------
+# Step 4: Run the 5-factor regression (OLS)
+# ---------------------------------------------
+factor_cols = ["Mkt-RF", "SMB", "HML", "RMW", "CMA"]
+X = sm.add_constant(df[factor_cols])   # const = alpha
+y = df["SPY_excess"]
+
+model = sm.OLS(y, X).fit()
+print(model.summary())
+
